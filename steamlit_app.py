@@ -55,33 +55,42 @@ for m in BUCKET_KEYS:
 st.sidebar.header("2) Filters")
 
 # STOP_NUMBER single/range
+stop_filter = None
 if STOP_NUMBER and STOP_NUMBER in df_raw.columns:
-    mode = st.sidebar.radio("Stop Number selection", ["Single", "Range"], horizontal=True)
     valid_stops = sorted(df_raw[STOP_NUMBER].dropna().unique())
-    if mode == "Single":
-        stop_val = st.sidebar.selectbox("STOP_NUMBER", options=valid_stops)
-        stop_filter = ("single", stop_val)
+    if len(valid_stops) > 0:
+        mode = st.sidebar.radio("Stop Number selection", ["Single", "Range"], horizontal=True)
+        if mode == "Single":
+            stop_val = st.sidebar.selectbox("STOP_NUMBER", options=valid_stops)
+            stop_filter = ("single", stop_val)
+        else:
+            s_min, s_max = int(min(valid_stops)), int(max(valid_stops))
+            lo, hi = st.sidebar.slider("STOP_NUMBER range (inclusive)", min_value=s_min, max_value=s_max, value=(s_min, s_max))
+            stop_filter = ("range", (lo, hi))
     else:
-        s_min, s_max = int(min(valid_stops)), int(max(valid_stops))
-        lo, hi = st.sidebar.slider("STOP_NUMBER range (inclusive)", min_value=s_min, max_value=s_max, value=(s_min, s_max))
-        stop_filter = ("range", (lo, hi))
+        st.sidebar.caption("No numeric STOP_NUMBER values found.")
 else:
-    stop_filter = None
     st.sidebar.caption("STOP_NUMBER column not found – skipping stop filter.")
 
 # Accuracy bucket multi-select (choose which pairs to show)
 available_buckets = [m for m in BUCKET_KEYS if (m in count_map and m in acc_map)]
-selected_buckets = st.sidebar.multiselect("Accuracy buckets to show", options=available_buckets, default=available_buckets, format_func=lambda x: f"{x} mins")
+selected_buckets = st.sidebar.multiselect(
+    "Accuracy buckets to show",
+    options=available_buckets,
+    default=available_buckets,
+    format_func=lambda x: f"{x} mins",
+)
 
 # Shipment Lane filter
+selected_lanes = None
 if SHIPMENT_LANE and SHIPMENT_LANE in df_raw.columns:
     lanes = sorted([x for x in df_raw[SHIPMENT_LANE].dropna().unique()])
-    selected_lanes = st.sidebar.multiselect("Shipment lane(s)", options=lanes, default=lanes)
-else:
-    selected_lanes = None
+    if len(lanes) > 0:
+        selected_lanes = st.sidebar.multiselect("Shipment lane(s)", options=lanes, default=lanes)
 
 # --- Apply filters to PREDICTION-LEVEL rows (no aggregation yet)
 df_f = df_raw.copy()
+
 if stop_filter and STOP_NUMBER in df_f.columns:
     mode, val = stop_filter
     if mode == "Single":
@@ -93,8 +102,22 @@ if stop_filter and STOP_NUMBER in df_f.columns:
 if selected_lanes is not None and SHIPMENT_LANE in df_f.columns:
     df_f = df_f[df_f[SHIPMENT_LANE].isin(selected_lanes)]
 
+# If no rows remain, show a friendly message
+if df_f.empty:
+    st.warning("No rows match the current filters. Adjust filters to see results.")
+    st.stop()
+
 # --- Shipment-level output: one row per BOL (take first occurrence)
-df_ship = df_f.sort_values(by=[BOL]).drop_duplicates(subset=[BOL], keep="first")
+if BOL in df_f.columns:
+    # Coerce to string to avoid mixed-type sort errors
+    df_f[BOL] = df_f[BOL].astype(str)
+    try:
+        df_ship = df_f.sort_values(by=[BOL]).drop_duplicates(subset=[BOL], keep="first")
+    except Exception:
+        df_ship = df_f.drop_duplicates(subset=[BOL], keep="first")
+else:
+    st.error("BILL_OF_LADING column not found in the uploaded CSV.")
+    st.stop()
 
 # Fixed columns for output (exclude ARRIVAL_WITHIN_APPOINTMENT_WINDOW as requested)
 fixed_cols = [c for c in [BOL, CARRIER_NAME, SHIPMENT_LANE, PING_COVERAGE, TOTAL_PREDICTIONS] if c and c in df_ship.columns]
@@ -125,7 +148,10 @@ with k1:
     st.metric("Shipments (unique BOL)", value=f"{df_ship[BOL].nunique():,}")
 with k2:
     if PING_COVERAGE and PING_COVERAGE in out.columns:
-        st.metric("Avg Ping Coverage", value=f"{pd.to_numeric(out[PING_COVERAGE], errors='coerce').mean():.2f}")
+        try:
+            st.metric("Avg Ping Coverage", value=f"{pd.to_numeric(out[PING_COVERAGE], errors='coerce').mean():.2f}")
+        except Exception:
+            st.metric("Avg Ping Coverage", value="—")
     else:
         st.metric("Avg Ping Coverage", value="—")
 with k3:
