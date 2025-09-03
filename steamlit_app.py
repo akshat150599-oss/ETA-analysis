@@ -54,19 +54,14 @@ for m in BUCKET_KEYS:
 # --- Sidebar filters
 st.sidebar.header("2) Filters")
 
-# STOP_NUMBER single/range
+# STOP_NUMBER range selection only (removed single option)
 stop_filter = None
 if STOP_NUMBER and STOP_NUMBER in df_raw.columns:
     valid_stops = sorted(df_raw[STOP_NUMBER].dropna().unique())
     if len(valid_stops) > 0:
-        mode = st.sidebar.radio("Stop Number selection", ["Single", "Range"], horizontal=True)
-        if mode == "Single":
-            stop_val = st.sidebar.selectbox("STOP_NUMBER", options=valid_stops)
-            stop_filter = ("single", stop_val)
-        else:
-            s_min, s_max = int(min(valid_stops)), int(max(valid_stops))
-            lo, hi = st.sidebar.slider("STOP_NUMBER range (inclusive)", min_value=s_min, max_value=s_max, value=(s_min, s_max))
-            stop_filter = ("range", (lo, hi))
+        s_min, s_max = int(min(valid_stops)), int(max(valid_stops))
+        lo, hi = st.sidebar.slider("STOP_NUMBER range (inclusive)", min_value=s_min, max_value=s_max, value=(s_min, s_max))
+        stop_filter = ("range", (lo, hi))
     else:
         st.sidebar.caption("No numeric STOP_NUMBER values found.")
 else:
@@ -88,7 +83,7 @@ if SHIPMENT_LANE and SHIPMENT_LANE in df_raw.columns:
     if len(lanes) > 0:
         selected_lanes = st.sidebar.multiselect("Shipment lane(s)", options=lanes, default=lanes)
 
-# --- Apply filters to PREDICTION-LEVEL rows (no aggregation yet)
+# --- Apply filters to PREDICTION-LEVEL rows (no aggregation yet) (no aggregation yet)
 df_f = df_raw.copy()
 
 if stop_filter and STOP_NUMBER in df_f.columns:
